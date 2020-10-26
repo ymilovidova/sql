@@ -1,0 +1,143 @@
+-- 1. Выгрузить сотрудника с максимальными продажами (сумма) в феврале 2016г
+-- Поле date_sale здесь обрабатывается как символьное поле за неимением дополнительной информации. 
+
+select t1.*, emp.name from 
+(
+	select cr.id_emp, sum(cr.volume) as sales from credit cr
+	where LEFT(cr.date_sale,6) = '201602'
+	group by cr.id_emp
+	order by sales desc 
+	limit 1
+) t1 
+join employee emp on t1.id_emp = emp.id_emp;
+
+
+--2. Выгрузить средний  размер кредита в Воронеже по сотрудникам
+-- В расчете не учитывается статус кредита: среднее значение считается и по активным, и по отказанным кредитам. Если нужно только по активным, то добавляем еще фильтр cr.status = 'a'
+
+select t1.*, emp.name from
+(
+	select cr.id_emp, avg(cr.volume) from credit cr 
+	join sellerplace sl on cr.id_sellerplace=sl.id_sellerplace
+	where sl.city = 'Воронеж'
+	group by cr.id_emp
+) t1
+join employee emp on t1.id_emp = emp.id_emp; 
+
+
+--3. Рассчитать процент одобрения  кредитов по городам в январе 2016г.
+-- Для корректного отображения в системе пришлось выполнить явное преобразование int в float. 
+
+select t1.city, sum(t1.volume) as total, sum(t1.active) as active, cast(sum(t1.active) as float)/cast(sum(t1.volume) as float)*100 as percentage from 
+(
+select *, 
+case 
+when cr.status = 'a' then volume 
+else 0
+end active
+from credit cr 
+join sellerplace sl on cr.id_sellerplace=sl.id_sellerplace
+) t1
+group by t1.city  
+
+
+-- 4. Сотрудникам, у которых не было продаж в 2016 году, изменить статус на неактивный 'n'
+-- Под продажой тут считается и одобренный, и отказанный кредит. Если нужно только одобренный, то добавляем дополнительный фильтр where cr.status = 'a'
+
+
+update employee 
+set status = 'n' 
+where id_emp in 
+(
+  select distinct cr2.id_emp from credit cr2 
+  where cr2.id_emp not in 
+  (
+    select distinct cr.id_emp from credit cr
+	where left(cr.date_sale,4) = '2016'
+  )
+)
+
+
+--1) Вывести карты, у которых была хотя бы одна транзакция в течении 30 дней с момента активации карты		
+-- Поля с датами изначально интерпретировались как числа
+
+
+select distinct tr.id_card from transaction tr, card cr 
+where tr.id_card=cr.id_card 
+and to_date(tr.date_transac, 'YYYYMMDD') < to_date(cr.date_activ, 'YYYYMMDD') + INTERVAL '30 days'
+
+-- "2) Вывести карты, у которых сумма транзакций составляет более 80% от лимита карты"		
+
+select t1.*, cr.lim from
+(
+	select tr.id_card, sum(cash) as total from transaction tr
+	GROUP by tr.id_card
+) t1  
+join card cr on t1.id_card=cr.id_card
+where t1.total/cr.lim > 0.8
+
+--1. Найти премию Иванова за март 2016
+
+
+select sum(pr.premium) from employee emp
+join emp_prem pr on emp.id_emp=pr.id_emp
+where emp.name = 'Иванов' 
+and EXTRACT(month from to_date(pr.month, 'YYYYMMDD')) = 2
+
+--2. Вывести всех сотрудников, имеющих максимальную премию в каждом месяце
+
+
+select t1.*, emp.name from
+(
+select *, rank() over(PARTITION by pr.month order by pr.premium desc) as ord from
+  (
+  	select pr1.id_emp, pr1.month, sum(pr1.premium) as premium from emp_prem pr1
+  	group by pr1.month, pr1.id_emp
+  ) pr
+) t1
+join employee emp on t1.id_emp = emp.id_emp
+where t1.ord = 1
+
+--3. Вывести сотрудников, у которых средняя премия в 1 квартале 2016г более 2000р
+
+
+select id_emp, avg(premium)  from
+(
+  select pr1.id_emp, pr1.month, sum(pr1.premium) as premium from emp_prem pr1
+  group by pr1.month, pr1.id_emp
+) pr
+where EXTRACT(month from to_date(pr.month, 'YYYYMMDD')) <= 3 
+and EXTRACT(YEAR from to_date(pr.month, 'YYYYMMDD')) = 2016
+group by id_emp 
+having avg(premium) > 2000
+
+
+-- 4. Тем сотрудникам, у которых в данном месяце максимальна, удвоить ее, если премия максимальна у нескольких сотрудников, удвоение не производить									
+-- Допустим, сейчас 2016 год и 2 месяц
+
+
+with prepare as
+(
+	select t1.*, emp.name from
+  (
+	select *, rank() over(PARTITION by pr.month order by pr.premium desc) as ord from
+    (
+  		select pr1.id_emp, pr1.month, sum(pr1.premium) as premium from emp_prem pr1
+  		group by pr1.month, pr1.id_emp
+    ) pr
+  ) t1
+join employee emp on t1.id_emp = emp.id_emp
+where t1.ord = 1 
+and EXTRACT(month from to_date(t1.month, 'YYYYMMDD')) = 2 
+and EXTRACT(YEAR from to_date(t1.month, 'YYYYMMDD')) = 2016
+)
+
+update emp_prem set premium = 
+case
+when (select count(*) from prepare ) = 1 then premium*2
+else premium
+end
+where id_emp in 
+(
+  select id_emp from prepare
+)
