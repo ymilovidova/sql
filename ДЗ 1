@@ -1,0 +1,41 @@
+1. Установите СУБД MySQL. Создайте в домашней директории файл .my.cnf, задав в нем логин и пароль, который указывался при установке.
+
+[mysql]
+user=root
+password=
+
+[client]
+user=root
+password=
+
+2.Создайте базу данных example, разместите в ней таблицу users, состоящую из двух столбцов, числового id и строкового name.
+
+mysql -u root -p
+
+SHOW DATABASES;
+
+CREATE DATABASE example;
+
+SHOW DATABASES;
+
+CREATE TABLE users (id SERIAL, name VARCHAR(100) NOT NULL UNIQUE);
+
+USE example;
+CREATE TABLE users (id SERIAL, name VARCHAR(100) NOT NULL UNIQUE);
+
+SHOW TABLES;
+
+exit 
+
+
+3. Создайте дамп базы данных example из предыдущего задания, разверните содержимое дампа в новую базу данных sample.
+
+Users\user\mysqldump -u root -p example 
+
+mysqldump  -u root -p example > example.sql 
+
+
+
+4. (по желанию) Ознакомьтесь более подробно с документацией утилиты mysqldump. Создайте дамп единственной таблицы help_keyword базы данных mysql. Причем добейтесь того, чтобы дамп содержал только первые 100 строк таблицы.
+
+mysqldump mysql help_keyword --where="1 limit 100" > mysql_help_keyword_100.sql
